@@ -77,7 +77,8 @@ def get_advanced_retriever(product_name: str, k: int = 40):
     )
     
     # 3. Multi-Query Expansion
-    llm = ChatGroq(temperature=0, model_name="llama3-8b-8192")
+    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    llm = ChatGroq(temperature=0, model_name=model_name)
     multi_query_retriever = MultiQueryRetriever.from_llm(
         retriever=hybrid_retriever,
         llm=llm

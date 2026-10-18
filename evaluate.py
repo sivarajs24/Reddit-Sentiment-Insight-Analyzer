@@ -34,13 +34,13 @@ async def generate_answer(query: str, product_name: str, contexts: list[str]) ->
     system_prompt = f"You are a helpful AI assistant answering questions about {product_name} complaints. Base your answers strictly on the context provided below.\n\nContext:\n{context_str}"
     
     try:
-        # Using a reliable Groq model for generation
+        model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         chat_completion = await client.chat.completions.create(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": query}
             ],
-            model='llama3-70b-8192',
+            model=model_name,
             temperature=0.2,
         )
         return chat_completion.choices[0].message.content
@@ -53,7 +53,8 @@ async def run_evaluation():
     
     # 1. Initialize Ragas Evaluator Models
     # We use Groq for the LLM judge to avoid OpenAI costs, and HuggingFace for embeddings
-    groq_llm = ChatGroq(model_name="llama3-70b-8192", temperature=0)
+    model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    groq_llm = ChatGroq(model_name=model_name, temperature=0)
     hf_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     
     # 2. Define the Test Dataset

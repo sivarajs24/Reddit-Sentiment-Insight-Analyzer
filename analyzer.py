@@ -8,7 +8,7 @@ from typing import List
 
 load_dotenv()
 
-MODEL_NAME = 'openai/gpt-oss-120b'
+MODEL_NAME = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 class AnalysisResult(BaseModel):
     most_hated_features: List[str] = Field(description="List of the most hated features (or best features if positive)")

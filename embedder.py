@@ -135,5 +135,8 @@ def process_product(raw_data: list, product_name: str):
     return False
 
 if __name__ == "__main__":
-    # Test script
-    process_product("Instagram")
+    from scraper import scrape_reddit
+    test_product = "Instagram"
+    sample_data = scrape_reddit(test_product, limit_per_sub=2)
+    if sample_data:
+        process_product(sample_data, test_product)

@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore")
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.concurrency import run_in_threadpool
@@ -22,6 +23,15 @@ load_dotenv()
 
 app = FastAPI(title="Reddit Sentiment & Insight Analyzer API")
 
+# Enable CORS for deployment across different domains
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
@@ -37,6 +47,16 @@ class ChatRequest(BaseModel):
 @app.get("/")
 async def root():
     return FileResponse('frontend/index.html')
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "Reddit Sentiment & Insight Analyzer",
+        "groq_configured": bool(os.getenv("GROQ_API_KEY")),
+        "pinecone_configured": bool(os.getenv("PINECONE_API_KEY")),
+        "apify_configured": bool(os.getenv("APIFY_API_TOKEN")),
+    }
 
 @app.get("/{filename}")
 async def serve_file(filename: str):
@@ -109,10 +129,15 @@ async def api_chat(request: ChatRequest):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            model='openai/gpt-oss-120b',
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             temperature=0.2,
         )
         response = chat_completion.choices[0].message.content
         return {"response": response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 7860))
+    uvicorn.run("api:app", host="0.0.0.0", port=port, reload=False)
