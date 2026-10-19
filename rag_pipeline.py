@@ -1,5 +1,4 @@
 import os
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import PineconeHybridSearchRetriever
 from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.retrievers import ContextualCompressionRetriever
@@ -7,26 +6,21 @@ from langchain.retrievers.document_compressors.base import BaseDocumentCompresso
 from langchain_core.documents import Document
 from langchain_core.callbacks import Callbacks
 from typing import Sequence
-from sentence_transformers import CrossEncoder
 from langchain_groq import ChatGroq
 from pinecone_text.sparse import BM25Encoder
 from pinecone import Pinecone
 import logging
 from pydantic import Field
+from embedder import get_embedding_model
 
 # Set logging for MultiQueryRetriever to see the generated queries
 logging.getLogger('langchain.retrievers.multi_query').setLevel(logging.INFO)
 
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 class CustomCrossEncoderReranker(BaseDocumentCompressor):
     model_name: str = CROSS_ENCODER_MODEL_NAME
     top_n: int = 40
-    
-    # We must use PrivateAttr to prevent pydantic from trying to parse the CrossEncoder object
-    # But for simplicity, we just initialize it inside compress_documents on first run, 
-    # or use a property.
     
     def compress_documents(
         self,
@@ -38,14 +32,23 @@ class CustomCrossEncoderReranker(BaseDocumentCompressor):
             return []
             
         print(f"Reranking {len(documents)} documents down to {self.top_n}...")
-        model = CrossEncoder(self.model_name)
-        pairs = [[query, doc.page_content] for doc in documents]
-        scores = model.predict(pairs)
-        
-        scored_docs = list(zip(documents, scores))
-        scored_docs.sort(key=lambda x: x[1], reverse=True)
-        
-        return [doc for doc, score in scored_docs[:self.top_n]]
+        try:
+            import gc
+            import torch
+            from sentence_transformers import CrossEncoder
+            with torch.no_grad():
+                model = CrossEncoder(self.model_name, device='cpu')
+                pairs = [[query, doc.page_content] for doc in documents]
+                scores = model.predict(pairs, batch_size=16, show_progress_bar=False)
+                del model
+                gc.collect()
+            
+            scored_docs = list(zip(documents, scores))
+            scored_docs.sort(key=lambda x: x[1], reverse=True)
+            return [doc for doc, score in scored_docs[:self.top_n]]
+        except Exception as e:
+            print(f"Note: CrossEncoder re-ranking skipped ({e}). Using top {self.top_n} hybrid search results.")
+            return list(documents)[:self.top_n]
 
 def get_advanced_retriever(product_name: str, k: int = 40):
     collection_name = f"reddit_{product_name.replace(' ', '_').lower()}"
@@ -65,7 +68,7 @@ def get_advanced_retriever(product_name: str, k: int = 40):
     else:
         print("Warning: BM25 encoder not found for this product. Hybrid search might be degraded.")
         
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    embeddings = get_embedding_model()
     
     # 2. Base Hybrid Retriever (Retrieves top 100 for re-ranking)
     hybrid_retriever = PineconeHybridSearchRetriever(

@@ -17,7 +17,7 @@ from ragas.metrics import (
 )
 
 from langchain_groq import ChatGroq
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from embedder import get_embedding_model
 
 # Import the user's RAG pipeline
 from rag_pipeline import retrieve_complaints
@@ -55,7 +55,7 @@ async def run_evaluation():
     # We use Groq for the LLM judge to avoid OpenAI costs, and HuggingFace for embeddings
     model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     groq_llm = ChatGroq(model_name=model_name, temperature=0)
-    hf_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    hf_embeddings = get_embedding_model()
     
     # 2. Define the Test Dataset
     # Since we don't know exactly what product is in the database, we use generic but realistic queries

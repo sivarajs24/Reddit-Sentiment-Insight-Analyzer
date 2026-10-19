@@ -2,13 +2,36 @@ import os
 import json
 from pinecone import Pinecone
 from langchain_pinecone import PineconeVectorStore
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from utils.clean_text import clean_reddit_text
 
 # Define embedding model
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+def get_embedding_model():
+    """
+    Returns an embedding instance.
+    If HF_TOKEN or HUGGINGFACEHUB_API_TOKEN is set in .env, uses Hugging Face's Free
+    Serverless Inference API (uses ~0 MB RAM on the server).
+    Otherwise, loads local HuggingFaceEmbeddings on CPU with lazy loading.
+    """
+    hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    if hf_token:
+        print("Using Hugging Face Serverless Inference API for embeddings (0 MB server RAM).")
+        from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+        return HuggingFaceInferenceAPIEmbeddings(
+            api_key=hf_token,
+            model_name=EMBEDDING_MODEL_NAME
+        )
+    
+    print(f"Loading local embedding model {EMBEDDING_MODEL_NAME} on CPU...")
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL_NAME,
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'normalize_embeddings': True}
+    )
 
 def load_and_clean_data(raw_data: list, product_name: str) -> list[Document]:
     """Cleans the raw text data and wraps into LangChain Documents."""
@@ -57,7 +80,7 @@ def create_vector_store(documents: list[Document], collection_name: str):
     print(f"Created {len(chunked_documents)} chunks from {len(documents)} original documents.")
 
     print(f"Generating embeddings using {EMBEDDING_MODEL_NAME}...")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
+    embeddings = get_embedding_model()
     
     index_name = os.environ.get("PINECONE_INDEX_NAME")
     if not index_name:
@@ -123,6 +146,8 @@ def create_vector_store(documents: list[Document], collection_name: str):
     )
     
     print("Hybrid Embeddings successfully stored in Pinecone.")
+    import gc
+    gc.collect()
     return retriever
 
 def process_product(raw_data: list, product_name: str):
